@@ -145,6 +145,7 @@ export default function EfbMap({
       attributionControl: false,
     });
     map.addControl(new mapboxgl.NavigationControl({showCompass: false}), 'bottom-right');
+    window.requestAnimationFrame(() => map.resize());
     map.on('error', (event) => {
       console.warn('Mapbox error', event?.error || event);
     });
@@ -266,7 +267,11 @@ export default function EfbMap({
 
   return (
     <div className="efb-map">
-      <div ref={mapContainerRef} className="efb-map__canvas"/>
+      <div
+        ref={mapContainerRef}
+        className="efb-map__canvas"
+        style={{position: 'absolute', inset: 0, width: '100%', height: '100%'}}
+      />
       <div className="map-controls">
         <Popover content={mapPresetContent} trigger="click" placement="rightTop">
           <Tooltip title="Map presets" placement="right">
