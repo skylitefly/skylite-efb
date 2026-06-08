@@ -128,11 +128,16 @@ export default function EfbMap({
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
+  const trafficSelectRef = useRef(onTrafficSelect);
   const appliedStyleRef = useRef(MAP_STYLES[0].url);
   const [styleId, setStyleId] = useState('ifr-high');
 
   const style = useMemo(() => MAP_STYLES.find((item) => item.id === styleId) || MAP_STYLES[0], [styleId]);
   const ownCid = String(user?.preferred_username || user?.username || user?.sub || '');
+
+  useEffect(() => {
+    trafficSelectRef.current = onTrafficSelect;
+  }, [onTrafficSelect]);
 
   useEffect(() => {
     if (mapRef.current || !mapContainerRef.current) return;
@@ -151,11 +156,14 @@ export default function EfbMap({
     });
     map.on('click', 'traffic-points', (event) => {
       const feature = event.features?.[0];
-      if (feature?.properties) onTrafficSelect?.(feature.properties);
+      if (feature?.properties) trafficSelectRef.current?.(feature.properties);
     });
     mapRef.current = map;
-    return () => map.remove();
-  }, [onTrafficSelect]);
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!mapRef.current) return;
