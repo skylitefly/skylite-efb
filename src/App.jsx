@@ -46,19 +46,64 @@ const routeTextEndpoints = (routeText) => {
   return {origin: airports[0], destination: airports.at(-1)};
 };
 
+const pointKey = (point) => point?.ident || point?.icao || point?.id || '';
+
+const sameRoutePoint = (a, b) => {
+  const aKey = pointKey(a);
+  const bKey = pointKey(b);
+  if (aKey && bKey && aKey === bKey) return true;
+  return Number.isFinite(Number(a?.longitude)) && Number.isFinite(Number(b?.longitude))
+    && Number.isFinite(Number(a?.latitude)) && Number.isFinite(Number(b?.latitude))
+    && Math.abs(Number(a.longitude) - Number(b.longitude)) < 0.0001
+    && Math.abs(Number(a.latitude) - Number(b.latitude)) < 0.0001;
+};
+
+const dedupeRoutePoints = (points) => {
+  const result = [];
+  (points || []).forEach((point) => {
+    if (!point) return;
+    if (result.length && sameRoutePoint(result.at(-1), point)) return;
+    result.push(point);
+  });
+  return result;
+};
+
+const indexOfRoutePoint = (points, target) => points.findIndex((point) => sameRoutePoint(point, target));
+
 const buildRouteOverlay = (routeData, departure, arrival) => {
-  const cruise = routeData?.route?.waypoints || [];
+  const points = routeData?.route?.waypoints || [];
+  const origin = points[0] || routeData?.origin;
+  const destination = points.at(-1) || routeData?.destination;
+  const departureConnection = departure?.waypoints?.at(-1);
+  const arrivalConnection = arrival?.waypoints?.[0];
+
+  const departureConnectionIndex = departureConnection ? indexOfRoutePoint(points, departureConnection) : -1;
+  const arrivalConnectionIndex = arrivalConnection ? indexOfRoutePoint(points, arrivalConnection) : -1;
+  const firstCruisePoint = points.length > 1 ? points[1] : null;
+  const lastCruisePoint = points.length > 1 ? points.at(-2) : null;
+
+  const cruiseStart = departureConnectionIndex >= 0 ? departureConnectionIndex : Math.min(points.length, firstCruisePoint ? 1 : 0);
+  const cruiseEndExclusive = arrivalConnectionIndex >= 0 ? arrivalConnectionIndex + 1 : Math.max(cruiseStart, points.length - (lastCruisePoint ? 1 : 0));
+  const cruise = points.slice(cruiseStart, cruiseEndExclusive);
+
   return {
-    departure: departure?.waypoints || [],
+    departure: departure
+      ? dedupeRoutePoints([origin, ...(departure.waypoints || [])])
+      : dedupeRoutePoints([origin, firstCruisePoint].filter(Boolean)),
     cruise,
-    arrival: arrival?.waypoints || [],
+    arrival: arrival
+      ? dedupeRoutePoints([...(arrival.waypoints || []), destination])
+      : dedupeRoutePoints([lastCruisePoint, destination].filter(Boolean)),
   };
 };
 
 function LandingPage({onLogin, loading}) {
   return (
     <div className="landing-page">
-      <Title>Skylite EFB</Title>
+      <Title className="landing-page__brand">
+        <span className="app-header__brand-main">Skylite</span>
+        <span className="landing-page__brand-product">EFB</span>
+      </Title>
       <Text type="secondary">Login is required to use Skylite EFB.</Text>
       <Button type="primary" size="large" icon={<LoginOutlined/>} loading={loading} onClick={onLogin}>
         Login
@@ -300,7 +345,10 @@ export default function App() {
   return (
     <Layout className="app-shell">
       <Header className="app-header">
-        <div className="app-header__brand">Skylite EFB</div>
+        <div className="app-header__brand">
+          <span className="app-header__brand-main">Skylite</span>
+          <span className="app-header__brand-product">EFB</span>
+        </div>
         <GlobalSearch onAirportSelect={openAirport}/>
         <Text type="secondary" className="app-header__user">{user?.preferred_username || user?.username}</Text>
       </Header>
@@ -331,7 +379,6 @@ export default function App() {
               </div>
               <div className={activePanel === 'route' ? 'panel-pane is-active' : 'panel-pane'}>
                 <RoutePanel
-                  plan={plan}
                   routeText={routeText}
                   routeData={routeData}
                   routeOrigin={routeOrigin}
@@ -354,6 +401,7 @@ export default function App() {
                 <AirportPanel
                   airportIcao={airportIcao}
                   plan={plan}
+                  preferences={preferences}
                   routeData={routeData}
                   selectedChart={selectedChart}
                   georefChart={georefChart}

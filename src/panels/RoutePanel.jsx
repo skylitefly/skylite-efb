@@ -97,26 +97,17 @@ function ProcedureChooser({mode, airport, procedures, selected, onBack, onPrevie
 
 function RouteHeader() {
   return (
-    <div className="route-grid route-grid--header">
+    <div className="route-header">
       <Text strong>Ident</Text>
-      <Text strong>Time<span>H:MIN</span></Text>
-      <Text strong>Speed<span>KTS|Ma</span></Text>
-      <Text strong>Alt<span>FT</span></Text>
-      <Text strong>Hdg</Text>
-      <Text strong>Dist<span>NM</span></Text>
     </div>
   );
 }
 
 function RoutePoint({point, section}) {
   return (
-    <div className={`route-grid route-point route-point--${section || point.type || 'route'}`}>
+    <div className={`route-point route-point--${section || point.type || 'route'}`}>
       <Text strong>{point.ident || point.icao || '-'}</Text>
-      <Text type="secondary">--:--</Text>
-      <Text type="secondary">---</Text>
-      <Text type="secondary">{point.elevation_ft || point.altitude_ft || '----'}</Text>
-      <Text type="secondary">{Number.isFinite(Number(point.heading)) ? `${Number(point.heading).toFixed(0)}deg` : '---'}</Text>
-      <Text type="secondary">{Number.isFinite(Number(point.distance_nm)) ? Number(point.distance_nm).toFixed(1) : '----'}</Text>
+      <Text type="secondary">{point.name || point.type || ''}</Text>
     </div>
   );
 }

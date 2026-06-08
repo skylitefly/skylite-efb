@@ -1,6 +1,6 @@
-import {useEffect, useMemo, useState} from 'react';
-import {Collapse, Descriptions, Empty, List, Space, Spin, Switch, Table, Tabs, Typography, message} from 'antd';
-import {FileImageOutlined} from '@ant-design/icons';
+import {useCallback, useEffect, useMemo, useState} from 'react';
+import {Button, Collapse, Descriptions, Empty, List, Space, Spin, Table, Tabs, Typography, message} from 'antd';
+import {FileImageOutlined, ReloadOutlined} from '@ant-design/icons';
 import {chartsApi, navApi, weatherApi} from '../api';
 
 const {Text, Title, Paragraph} = Typography;
@@ -17,6 +17,7 @@ const groupBy = (items, key) => items.reduce((acc, item) => {
 export default function AirportPanel({
   airportIcao,
   plan,
+  preferences,
   routeData,
   selectedChart,
   georefChart,
@@ -27,8 +28,10 @@ export default function AirportPanel({
   const [loading, setLoading] = useState(false);
   const [airportData, setAirportData] = useState(null);
   const [weather, setWeather] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
   const [charts, setCharts] = useState([]);
   const [chartsLoading, setChartsLoading] = useState(false);
+  const weatherRefreshInterval = Number(preferences?.weatherRefreshIntervalSeconds ?? 300);
 
   const candidateAirports = useMemo(() => {
     const codes = new Set();
@@ -54,10 +57,30 @@ export default function AirportPanel({
     load();
   }, [airportIcao]);
 
-  useEffect(() => {
+  const loadWeather = useCallback(async () => {
     if (!airportIcao) return;
-    weatherApi.getAirportWeather(airportIcao).then(setWeather).catch(() => setWeather(null));
+    setWeatherLoading(true);
+    try {
+      const data = await weatherApi.getAirportWeather(airportIcao);
+      setWeather(data);
+    } catch {
+      setWeather(null);
+    } finally {
+      setWeatherLoading(false);
+    }
   }, [airportIcao]);
+
+  useEffect(() => {
+    if (!airportIcao) return undefined;
+    const initialTimer = window.setTimeout(loadWeather, 0);
+    const intervalTimer = weatherRefreshInterval
+      ? window.setInterval(loadWeather, weatherRefreshInterval * 1000)
+      : null;
+    return () => {
+      window.clearTimeout(initialTimer);
+      if (intervalTimer) window.clearInterval(intervalTimer);
+    };
+  }, [airportIcao, loadWeather, weatherRefreshInterval]);
 
   useEffect(() => {
     if (!airportIcao) return;
@@ -112,8 +135,12 @@ export default function AirportPanel({
           <Descriptions.Item label="Longest Runway">
             {airport?.longest_runway_ft ? `${airport.longest_runway_ft} ft / ${longestMeters} m` : '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="Transition Altitude">{airport?.transition_altitude_ft || '-'}</Descriptions.Item>
-          <Descriptions.Item label="Transition Level">{airport?.transition_level || '-'}</Descriptions.Item>
+          <Descriptions.Item label="Transition Altitude">
+            {airport?.transition_altitude_ft ? `${airport.transition_altitude_ft} ft` : '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="Transition Level">
+            {airport?.transition_level ? `FL ${airport.transition_level}` : '-'}
+          </Descriptions.Item>
         </Descriptions>
       ),
     },
@@ -166,13 +193,16 @@ export default function AirportPanel({
       label: 'Weather',
       children: (
         <Space direction="vertical" size="middle" style={{width: '100%'}}>
+          <Button icon={<ReloadOutlined/>} loading={weatherLoading} onClick={loadWeather}>
+            Refresh
+          </Button>
           <div>
             <Text strong>METAR</Text>
-            <Paragraph copyable className="weather-text">{weather?.data?.metar || '-'}</Paragraph>
+            <Paragraph className="weather-text weather-report">{weather?.data?.metar || '-'}</Paragraph>
           </div>
           <div>
             <Text strong>TAF</Text>
-            <Paragraph copyable className="weather-text">{weather?.data?.taf || '-'}</Paragraph>
+            <Paragraph className="weather-text weather-report">{weather?.data?.taf || '-'}</Paragraph>
           </div>
         </Space>
       ),
@@ -191,15 +221,17 @@ export default function AirportPanel({
               onClick={() => onChartSelect(chart)}
               actions={[
                 chart.is_georeferenced ? (
-                  <Switch
+                  <Button
                     key="georef"
                     size="small"
-                    checked={georefChart?.id === chart.id}
-                    onClick={(checked, event) => {
+                    type={georefChart?.id === chart.id ? 'primary' : 'default'}
+                    onClick={(event) => {
                       event.stopPropagation();
-                      onGeorefChartChange(checked ? chart : null);
+                      onGeorefChartChange(georefChart?.id === chart.id ? null : chart);
                     }}
-                  />
+                  >
+                    Geo
+                  </Button>
                 ) : null,
               ].filter(Boolean)}
             >

@@ -65,7 +65,10 @@ export const oauthApi = {
     }),
 };
 
-export const fetchWhazzup = () => jsonRequest('', WHAZZUP_URL);
+export const fetchWhazzup = () => {
+  const separator = WHAZZUP_URL.includes('?') ? '&' : '?';
+  return jsonRequest('', `${WHAZZUP_URL}${separator}_=${Date.now()}`);
+};
 
 export const fetchSimBrief = (username) =>
   jsonRequest('', `https://www.simbrief.com/api/xml.fetcher.php?username=${encodeURIComponent(username)}&json=1`);

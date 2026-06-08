@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {Button, Popover, Segmented, Space, Switch, Tooltip, Typography} from 'antd';
+import {Button, Popover, Segmented, Space, Tooltip, Typography} from 'antd';
 import {
   AimOutlined,
   CloseOutlined,
@@ -131,6 +131,20 @@ const whenStyleReady = (map, update) => {
 const chartCoordinates = (chart) => {
   const box = Array.isArray(chart?.bounding_boxes) ? chart.bounding_boxes[0] : chart?.bounding_boxes;
   if (!box) return null;
+  const planview = box.planview;
+  if (planview?.pixels && planview?.latlng && chart?.width && chart?.height) {
+    const {x1, y1, x2, y2} = planview.pixels;
+    const {lng1, lat1, lng2, lat2} = planview.latlng;
+    if ([x1, y1, x2, y2, lng1, lat1, lng2, lat2, chart.width, chart.height].every(Number.isFinite)) {
+      const lngPerPixel = (lng2 - lng1) / (x2 - x1);
+      const latPerPixel = (lat2 - lat1) / (y1 - y2);
+      const west = lng1 - x1 * lngPerPixel;
+      const east = lng1 + (chart.width - x1) * lngPerPixel;
+      const north = lat2 + y2 * latPerPixel;
+      const south = lat2 - (chart.height - y2) * latPerPixel;
+      return [[west, north], [east, north], [east, south], [west, south]];
+    }
+  }
   const west = box.west ?? box.min_lon ?? box.minLon ?? box.left;
   const east = box.east ?? box.max_lon ?? box.maxLon ?? box.right;
   const north = box.north ?? box.max_lat ?? box.maxLat ?? box.top;
@@ -383,10 +397,6 @@ export default function EfbMap({
         <Tooltip title="Moving Maps" placement="right">
           <Button className={movingMap ? 'is-active' : ''} icon={<AimOutlined/>} onClick={() => onMovingMapChange(!movingMap)}/>
         </Tooltip>
-        <div className="map-controls__switch">
-          <Switch size="small" checked={networkTraffic} onChange={onNetworkTrafficChange}/>
-          <Text type="secondary">Traffic</Text>
-        </div>
       </div>
       {selectedChart && <ChartOverlay chart={selectedChart} onClose={onCloseChart}/>}
     </div>
