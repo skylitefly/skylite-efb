@@ -1,7 +1,6 @@
 import {useState} from 'react';
 import {Button, Descriptions, Dropdown, Empty, Input, message, Modal, Space, Typography} from 'antd';
-import {CloudDownloadOutlined, PlusOutlined} from '@ant-design/icons';
-import AirportSearchModal from '../components/AirportSearchModal';
+import {CloudDownloadOutlined} from '@ant-design/icons';
 import {fetchSimBrief, fetchWhazzup} from '../api';
 
 const {Text} = Typography;
@@ -38,11 +37,9 @@ export default function FlightPlanPanel({
   onPlanChange,
   onPreferenceChange,
   onOpenAirport,
-  onAutoRoute,
 }) {
   const [simBriefOpen, setSimBriefOpen] = useState(false);
   const [simBriefUsername, setSimBriefUsername] = useState(preferences.simbriefUsername || '');
-  const [airportTarget, setAirportTarget] = useState(null);
 
   const importSimBrief = async () => {
     const username = (simBriefUsername || preferences.simbriefUsername || '').trim();
@@ -54,7 +51,7 @@ export default function FlightPlanPanel({
     try {
       const data = await fetchSimBrief(username);
       const nextPlan = normalizeSimBriefPlan(data);
-      onPlanChange(nextPlan);
+      await onPlanChange(nextPlan);
       await onPreferenceChange({simbriefUsername: username});
       setSimBriefOpen(false);
       message.success('SimBrief flight plan imported');
@@ -75,7 +72,7 @@ export default function FlightPlanPanel({
         message.error('No submitted flight plan was found for your online user');
         return;
       }
-      onPlanChange(normalizeWhazzupPlan(own));
+      await onPlanChange(normalizeWhazzupPlan(own));
       message.success('Whazzup flight plan imported');
     } catch (error) {
       message.error(error.message || 'Whazzup import failed');
@@ -116,14 +113,12 @@ export default function FlightPlanPanel({
               <Descriptions.Item label="Origin">
                 <Space>
                   <Text>{plan.origin || '-'}</Text>
-                  <Button size="small" icon={<PlusOutlined/>} onClick={() => setAirportTarget('origin')}>Add</Button>
                   {plan.origin && <Button size="small" onClick={() => onOpenAirport(plan.origin)}>Open</Button>}
                 </Space>
               </Descriptions.Item>
               <Descriptions.Item label="Destination">
                 <Space>
                   <Text>{plan.destination || '-'}</Text>
-                  <Button size="small" icon={<PlusOutlined/>} onClick={() => setAirportTarget('destination')}>Add</Button>
                   {plan.destination && <Button size="small" onClick={() => onOpenAirport(plan.destination)}>Open</Button>}
                 </Space>
               </Descriptions.Item>
@@ -134,9 +129,6 @@ export default function FlightPlanPanel({
               <Text type="secondary">Route</Text>
               <div className="route-string">{plan.route || '-'}</div>
             </div>
-            <Button type="primary" block disabled={!plan.origin || !plan.destination} onClick={onAutoRoute}>
-              Auto Route
-            </Button>
           </Space>
         )}
         <Modal
@@ -151,15 +143,6 @@ export default function FlightPlanPanel({
             placeholder="SimBrief username"
           />
         </Modal>
-        <AirportSearchModal
-          open={Boolean(airportTarget)}
-          title={airportTarget === 'origin' ? 'Select Origin' : 'Select Destination'}
-          onCancel={() => setAirportTarget(null)}
-          onSelect={(airport) => {
-            onPlanChange({...plan, [airportTarget]: airport.icao});
-            setAirportTarget(null);
-          }}
-        />
       </div>
   );
 }

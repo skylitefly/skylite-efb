@@ -76,6 +76,8 @@ export default function App() {
   const [sideOpen, setSideOpen] = useState(true);
   const [activePanel, setActivePanel] = useState('flightPlan');
   const [plan, setPlan] = useState(null);
+  const [routeOrigin, setRouteOrigin] = useState(null);
+  const [routeDestination, setRouteDestination] = useState(null);
   const [routeText, setRouteText] = useState('');
   const [routeData, setRouteData] = useState(null);
   const [selectedDeparture, setSelectedDeparture] = useState(null);
@@ -137,11 +139,6 @@ export default function App() {
     message.success('Preferences saved');
   }, [token]);
 
-  const updatePlan = useCallback((nextPlan) => {
-    setPlan(nextPlan);
-    if (nextPlan?.route) setRouteText(nextPlan.route);
-  }, []);
-
   const openAirport = useCallback((airport) => {
     const icao = typeof airport === 'string' ? airport : airport?.icao;
     if (!icao) return;
@@ -150,9 +147,59 @@ export default function App() {
     setSideOpen(true);
   }, []);
 
+  const parseRouteText = useCallback(async ({text, origin, destination, silent = false}) => {
+    if (!text?.trim()) return null;
+    const endpoints = routeTextEndpoints(text);
+    const resolvedOrigin = origin || routeOrigin?.icao || routeData?.origin?.icao || plan?.origin || endpoints.origin;
+    const resolvedDestination = destination || routeDestination?.icao || routeData?.destination?.icao || plan?.destination || endpoints.destination;
+    const hide = silent ? null : message.loading('Parsing route...', 0);
+    try {
+      const parsed = await navApi.parseRoute({route: text, origin: resolvedOrigin, destination: resolvedDestination});
+      setRouteData((current) => ({
+        ...(current || {}),
+        origin: resolvedOrigin ? {icao: resolvedOrigin} : current?.origin,
+        destination: resolvedDestination ? {icao: resolvedDestination} : current?.destination,
+        route: {
+          string: parsed.route,
+          distance_nm: parsed.distance_nm,
+          distance_km: parsed.distance_km,
+          waypoints: parsed.waypoints || [],
+          segments: parsed.segments || [],
+        },
+      }));
+      return parsed;
+    } catch (error) {
+      if (!silent) message.error(error.message || 'Route parsing failed');
+      return null;
+    } finally {
+      hide?.();
+    }
+  }, [plan, routeData, routeDestination, routeOrigin]);
+
+  const updatePlan = useCallback(async (nextPlan) => {
+    setPlan(nextPlan);
+    const nextRoute = nextPlan?.route || '';
+    const nextOrigin = nextPlan?.origin ? {icao: nextPlan.origin} : null;
+    const nextDestination = nextPlan?.destination ? {icao: nextPlan.destination} : null;
+    setRouteText(nextRoute);
+    setRouteOrigin(nextOrigin);
+    setRouteDestination(nextDestination);
+    setSelectedDeparture(null);
+    setSelectedArrival(null);
+    setProcedurePreview(null);
+    if (nextRoute) {
+      await parseRouteText({
+        text: nextRoute,
+        origin: nextPlan?.origin,
+        destination: nextPlan?.destination,
+        silent: false,
+      });
+    }
+  }, [parseRouteText]);
+
   const autoRoute = useCallback(async () => {
-    const origin = plan?.origin || routeData?.origin?.icao;
-    const destination = plan?.destination || routeData?.destination?.icao;
+    const origin = routeOrigin?.icao || routeData?.origin?.icao || plan?.origin;
+    const destination = routeDestination?.icao || routeData?.destination?.icao || plan?.destination;
     if (!origin || !destination) return;
     const hide = message.loading('Planning route...', 0);
     try {
@@ -164,6 +211,10 @@ export default function App() {
       });
       setRouteData(data);
       setRouteText(data.route?.string || '');
+      setRouteOrigin(data.origin || {icao: origin});
+      setRouteDestination(data.destination || {icao: destination});
+      setSelectedDeparture(data.selected_departure || selectedDeparture || null);
+      setSelectedArrival(data.selected_arrival || selectedArrival || null);
       setPlan((current) => ({...(current || {}), origin, destination, route: data.route?.string || ''}));
       setActivePanel('route');
       setSideOpen(true);
@@ -172,34 +223,32 @@ export default function App() {
     } finally {
       hide();
     }
-  }, [plan, routeData, selectedArrival, selectedDeparture]);
+  }, [plan, routeData, routeDestination, routeOrigin, selectedArrival, selectedDeparture]);
 
   const parseRoute = useCallback(async () => {
-    if (!routeText.trim()) return;
-    const endpoints = routeTextEndpoints(routeText);
-    const origin = plan?.origin || routeData?.origin?.icao || endpoints.origin;
-    const destination = plan?.destination || routeData?.destination?.icao || endpoints.destination;
-    const hide = message.loading('Parsing route...', 0);
-    try {
-      const parsed = await navApi.parseRoute({route: routeText, origin, destination});
-      setRouteData((current) => ({
-        ...(current || {}),
-        origin: origin ? {icao: origin} : current?.origin,
-        destination: destination ? {icao: destination} : current?.destination,
-        route: {
-          string: parsed.route,
-          distance_nm: parsed.distance_nm,
-          distance_km: parsed.distance_km,
-          waypoints: parsed.waypoints || [],
-          segments: parsed.segments || [],
-        },
-      }));
-    } catch (error) {
-      message.error(error.message || 'Route parsing failed');
-    } finally {
-      hide();
+    await parseRouteText({text: routeText});
+  }, [parseRouteText, routeText]);
+
+  const handleRouteAirportChange = useCallback((target, airport) => {
+    if (target === 'origin') {
+      setRouteOrigin(airport);
+      setSelectedDeparture(null);
+      setProcedurePreview(null);
+      setPlan((current) => current ? {...current, origin: airport.icao} : current);
     }
-  }, [plan, routeData, routeText]);
+    if (target === 'destination') {
+      setRouteDestination(airport);
+      setSelectedArrival(null);
+      setProcedurePreview(null);
+      setPlan((current) => current ? {...current, destination: airport.icao} : current);
+    }
+    setRouteData((current) => ({
+      ...(current || {}),
+      ...(target === 'origin' ? {origin: airport} : {}),
+      ...(target === 'destination' ? {destination: airport} : {}),
+      route: routeText ? current?.route : null,
+    }));
+  }, [routeText]);
 
   const handleMovingMapChange = useCallback(async (checked) => {
     if (!checked) {
@@ -278,7 +327,6 @@ export default function App() {
                   onPlanChange={updatePlan}
                   onPreferenceChange={patchPreferences}
                   onOpenAirport={openAirport}
-                  onAutoRoute={autoRoute}
                 />
               </div>
               <div className={activePanel === 'route' ? 'panel-pane is-active' : 'panel-pane'}>
@@ -286,6 +334,8 @@ export default function App() {
                   plan={plan}
                   routeText={routeText}
                   routeData={routeData}
+                  routeOrigin={routeOrigin}
+                  routeDestination={routeDestination}
                   selectedDeparture={selectedDeparture}
                   selectedArrival={selectedArrival}
                   onRouteTextChange={setRouteText}
@@ -296,6 +346,8 @@ export default function App() {
                     if (mode === 'arrival') setSelectedArrival(procedure);
                   }}
                   onProcedurePreview={setProcedurePreview}
+                  onRouteAirportChange={handleRouteAirportChange}
+                  onOpenAirport={openAirport}
                 />
               </div>
               <div className={activePanel === 'airport' ? 'panel-pane is-active' : 'panel-pane'}>

@@ -21,6 +21,8 @@ export const navApi = {
   searchAirports: (query, limit = 12) =>
     jsonRequest(NAVIGATION_API_BASE_URL, `/api/airports?query=${encodeURIComponent(query)}&limit=${limit}`),
   getAirport: (icao) => jsonRequest(NAVIGATION_API_BASE_URL, `/api/airports/${encodeURIComponent(icao)}`),
+  getAirportProcedures: (icao, type = 'all') =>
+    jsonRequest(NAVIGATION_API_BASE_URL, `/api/airports/${encodeURIComponent(icao)}/procedures?type=${encodeURIComponent(type)}`),
   planRoute: (params) => {
     const search = new URLSearchParams(params);
     return jsonRequest(NAVIGATION_API_BASE_URL, `/api/routes/plan?${search.toString()}`);

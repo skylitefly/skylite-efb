@@ -27,6 +27,22 @@ const pointsToLine = (points) => ({
   }] : [],
 });
 
+const pointsToFeatures = (points, section) => ({
+  type: 'FeatureCollection',
+  features: (points || [])
+    .filter((point) => Number.isFinite(Number(point.longitude)) && Number.isFinite(Number(point.latitude)))
+    .map((point, index) => ({
+      type: 'Feature',
+      geometry: {type: 'Point', coordinates: [Number(point.longitude), Number(point.latitude)]},
+      properties: {
+        id: `${section}-${point.ident || point.icao || 'POINT'}-${index}`,
+        ident: point.ident || point.icao || point.name || '',
+        type: point.type || section,
+        section,
+      },
+    })),
+});
+
 const addLineLayer = (map, id, color) => {
   if (!map.getSource(id)) {
     map.addSource(id, {type: 'geojson', data: emptyCollection});
@@ -40,6 +56,63 @@ const addLineLayer = (map, id, color) => {
       paint: {'line-color': color, 'line-width': 3, 'line-opacity': 0.9},
     });
   }
+};
+
+const addPointLayers = (map, id, color) => {
+  const sourceId = `${id}-points`;
+  const pointLayerId = `${id}-point-layer`;
+  const labelLayerId = `${id}-label-layer`;
+  if (!map.getSource(sourceId)) {
+    map.addSource(sourceId, {type: 'geojson', data: emptyCollection});
+  }
+  if (!map.getLayer(pointLayerId)) {
+    map.addLayer({
+      id: pointLayerId,
+      type: 'circle',
+      source: sourceId,
+      paint: {
+        'circle-radius': ['match', ['get', 'type'], 'airport', 7, 4],
+        'circle-color': color,
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 1.4,
+      },
+    });
+  }
+  if (!map.getLayer(labelLayerId)) {
+    map.addLayer({
+      id: labelLayerId,
+      type: 'symbol',
+      source: sourceId,
+      layout: {
+        'text-field': ['get', 'ident'],
+        'text-size': 11,
+        'text-offset': [0, 1.15],
+        'text-anchor': 'top',
+        'text-allow-overlap': false,
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': '#111827',
+        'text-halo-width': 1,
+      },
+    });
+  }
+};
+
+const fitRouteBounds = (map, route) => {
+  const coordinates = [
+    ...(route?.departure || []),
+    ...(route?.cruise || []),
+    ...(route?.arrival || []),
+  ]
+    .filter((point) => Number.isFinite(Number(point.longitude)) && Number.isFinite(Number(point.latitude)))
+    .map((point) => [Number(point.longitude), Number(point.latitude)]);
+  if (coordinates.length < 2) return;
+  const bounds = coordinates.reduce(
+    (current, coordinate) => current.extend(coordinate),
+    new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]),
+  );
+  map.fitBounds(bounds, {padding: 72, duration: 700, maxZoom: 8});
 };
 
 const whenStyleReady = (map, update) => {
@@ -129,6 +202,7 @@ export default function EfbMap({
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const trafficSelectRef = useRef(onTrafficSelect);
+  const routeFitSignatureRef = useRef('');
   const appliedStyleRef = useRef(MAP_STYLES[0].url);
   const [styleId, setStyleId] = useState('ifr-high');
 
@@ -180,10 +254,27 @@ export default function EfbMap({
       addLineLayer(map, 'route-cruise', '#1677ff');
       addLineLayer(map, 'route-arrival', '#16a34a');
       addLineLayer(map, 'procedure-preview', '#a855f7');
+      addPointLayers(map, 'route-departure', '#ff6b6b');
+      addPointLayers(map, 'route-cruise', '#1677ff');
+      addPointLayers(map, 'route-arrival', '#16a34a');
+      addPointLayers(map, 'procedure-preview', '#a855f7');
       map.getSource('route-departure')?.setData(pointsToLine(route?.departure || []));
       map.getSource('route-cruise')?.setData(pointsToLine(route?.cruise || []));
       map.getSource('route-arrival')?.setData(pointsToLine(route?.arrival || []));
       map.getSource('procedure-preview')?.setData(pointsToLine(procedurePreview?.waypoints || []));
+      map.getSource('route-departure-points')?.setData(pointsToFeatures(route?.departure || [], 'departure'));
+      map.getSource('route-cruise-points')?.setData(pointsToFeatures(route?.cruise || [], 'cruise'));
+      map.getSource('route-arrival-points')?.setData(pointsToFeatures(route?.arrival || [], 'arrival'));
+      map.getSource('procedure-preview-points')?.setData(pointsToFeatures(procedurePreview?.waypoints || [], 'preview'));
+      const fitSignature = JSON.stringify([
+        route?.departure?.map((point) => point.ident || point.icao),
+        route?.cruise?.map((point) => point.ident || point.icao),
+        route?.arrival?.map((point) => point.ident || point.icao),
+      ]);
+      if (!procedurePreview && fitSignature !== routeFitSignatureRef.current) {
+        routeFitSignatureRef.current = fitSignature;
+        fitRouteBounds(map, route);
+      }
     };
     return whenStyleReady(map, update);
   }, [route, procedurePreview]);
