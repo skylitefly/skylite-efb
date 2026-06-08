@@ -42,6 +42,19 @@ const addLineLayer = (map, id, color) => {
   }
 };
 
+const whenStyleReady = (map, update) => {
+  const run = () => {
+    if (map.isStyleLoaded()) update();
+  };
+  map.on('style.load', update);
+  map.on('idle', run);
+  run();
+  return () => {
+    map.off('style.load', update);
+    map.off('idle', run);
+  };
+};
+
 const chartCoordinates = (chart) => {
   const box = Array.isArray(chart?.bounding_boxes) ? chart.bounding_boxes[0] : chart?.bounding_boxes;
   if (!box) return null;
@@ -71,6 +84,11 @@ function ChartOverlay({chart, onClose}) {
       </Space>
       <div
         className="chart-overlay__stage"
+        onWheel={(event) => {
+          event.preventDefault();
+          const delta = event.deltaY < 0 ? 0.12 : -0.12;
+          setScale((value) => Math.min(5, Math.max(0.4, value + delta)));
+        }}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
           dragRef.current = {x: event.clientX, y: event.clientY, offset};
@@ -111,33 +129,38 @@ export default function EfbMap({
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const [styleId, setStyleId] = useState('ifr-high');
+  const [initialMapStyle] = useState(() => (MAP_STYLES[0].getStyle()));
 
   const style = useMemo(() => MAP_STYLES.find((item) => item.id === styleId) || MAP_STYLES[0], [styleId]);
+  const mapStyle = useMemo(() => style.getStyle(), [style]);
   const ownCid = String(user?.preferred_username || user?.username || user?.sub || '');
 
   useEffect(() => {
     if (mapRef.current || !mapContainerRef.current) return;
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: style.url,
+      style: initialMapStyle,
       center: [105, 35],
       zoom: 3.5,
       minZoom: 2,
       attributionControl: false,
     });
     map.addControl(new mapboxgl.NavigationControl({showCompass: false}), 'bottom-right');
+    map.on('error', (event) => {
+      console.warn('Mapbox error', event?.error || event);
+    });
     map.on('click', 'traffic-points', (event) => {
       const feature = event.features?.[0];
       if (feature?.properties) onTrafficSelect?.(feature.properties);
     });
     mapRef.current = map;
     return () => map.remove();
-  }, [onTrafficSelect, style.url]);
+  }, [initialMapStyle, onTrafficSelect]);
 
   useEffect(() => {
     if (!mapRef.current) return;
-    mapRef.current.setStyle(style.url);
-  }, [style.url]);
+    mapRef.current.setStyle(mapStyle);
+  }, [mapStyle]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -152,9 +175,7 @@ export default function EfbMap({
       map.getSource('route-arrival')?.setData(pointsToLine(route?.arrival || []));
       map.getSource('procedure-preview')?.setData(pointsToLine(procedurePreview?.waypoints || []));
     };
-    map.on('styledata', update);
-    if (map.isStyleLoaded()) update();
-    return () => map.off('styledata', update);
+    return whenStyleReady(map, update);
   }, [route, procedurePreview]);
 
   useEffect(() => {
@@ -193,15 +214,6 @@ export default function EfbMap({
           paint: {'circle-radius': 5, 'circle-color': '#1677ff', 'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff'},
         });
       }
-      if (!map.getLayer('traffic-labels')) {
-        map.addLayer({
-          id: 'traffic-labels',
-          type: 'symbol',
-          source: 'traffic',
-          layout: {'text-field': ['get', 'callsign'], 'text-size': 11, 'text-offset': [0, 1.2]},
-          paint: {'text-color': '#111827', 'text-halo-color': '#ffffff', 'text-halo-width': 1},
-        });
-      }
       if (!map.getSource('ownship')) map.addSource('ownship', {type: 'geojson', data: emptyCollection});
       if (!map.getLayer('ownship-point')) {
         map.addLayer({
@@ -214,9 +226,7 @@ export default function EfbMap({
       map.getSource('traffic')?.setData({type: 'FeatureCollection', features: trafficFeatures});
       map.getSource('ownship')?.setData({type: 'FeatureCollection', features: ownFeatures});
     };
-    map.on('styledata', update);
-    if (map.isStyleLoaded()) update();
-    return () => map.off('styledata', update);
+    return whenStyleReady(map, update);
   }, [movingMap, networkTraffic, ownCid, user, whazzup]);
 
   useEffect(() => {
@@ -237,9 +247,7 @@ export default function EfbMap({
         });
       }
     };
-    map.on('styledata', update);
-    if (map.isStyleLoaded()) update();
-    return () => map.off('styledata', update);
+    return whenStyleReady(map, update);
   }, [georefChart]);
 
   const mapPresetContent = (
