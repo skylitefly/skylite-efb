@@ -128,18 +128,17 @@ export default function EfbMap({
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
+  const appliedStyleRef = useRef(MAP_STYLES[0].url);
   const [styleId, setStyleId] = useState('ifr-high');
-  const [initialMapStyle] = useState(() => (MAP_STYLES[0].getStyle()));
 
   const style = useMemo(() => MAP_STYLES.find((item) => item.id === styleId) || MAP_STYLES[0], [styleId]);
-  const mapStyle = useMemo(() => style.getStyle(), [style]);
   const ownCid = String(user?.preferred_username || user?.username || user?.sub || '');
 
   useEffect(() => {
     if (mapRef.current || !mapContainerRef.current) return;
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: initialMapStyle,
+      style: appliedStyleRef.current,
       center: [105, 35],
       zoom: 3.5,
       minZoom: 2,
@@ -155,12 +154,14 @@ export default function EfbMap({
     });
     mapRef.current = map;
     return () => map.remove();
-  }, [initialMapStyle, onTrafficSelect]);
+  }, [onTrafficSelect]);
 
   useEffect(() => {
     if (!mapRef.current) return;
-    mapRef.current.setStyle(mapStyle);
-  }, [mapStyle]);
+    if (appliedStyleRef.current === style.url) return;
+    appliedStyleRef.current = style.url;
+    mapRef.current.setStyle(style.url);
+  }, [style.url]);
 
   useEffect(() => {
     const map = mapRef.current;
