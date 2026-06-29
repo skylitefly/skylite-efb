@@ -19,7 +19,7 @@ import AirportPanel from './panels/AirportPanel';
 import SettingsPanel from './panels/SettingsPanel';
 
 const {Header, Sider, Content} = Layout;
-const {Title, Text} = Typography;
+const {Text} = Typography;
 
 const panelMeta = {
   flightPlan: {title: 'Flight Plan', icon: <CompassOutlined/>},
@@ -100,10 +100,10 @@ const buildRouteOverlay = (routeData, departure, arrival) => {
 function LandingPage({onLogin, loading}) {
   return (
     <div className="landing-page">
-      <Title className="landing-page__brand">
-        <span className="app-header__brand-main">Skylite</span>
+      <div className="landing-page__brand">
+        <span className="landing-page__brand-main">Skylite</span>
         <span className="landing-page__brand-product">EFB</span>
-      </Title>
+      </div>
       <Text type="secondary">Login is required to use Skylite EFB.</Text>
       <Button type="primary" size="large" icon={<LoginOutlined/>} loading={loading} onClick={onLogin}>
         Login
@@ -169,7 +169,7 @@ export default function App() {
       }
     };
     load();
-    const timer = window.setInterval(load, 15000);
+    const timer = window.setInterval(load, 5000);
     return () => {
       stopped = true;
       window.clearInterval(timer);

@@ -31,6 +31,7 @@ export default function AirportPanel({
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [charts, setCharts] = useState([]);
   const [chartsLoading, setChartsLoading] = useState(false);
+  const [activeChartCategory, setActiveChartCategory] = useState(null);
   const weatherRefreshInterval = Number(preferences?.weatherRefreshIntervalSeconds ?? 300);
 
   const candidateAirports = useMemo(() => {
@@ -97,6 +98,19 @@ export default function AirportPanel({
     };
     loadCharts();
   }, [airportIcao]);
+
+  const groupedCharts = useMemo(() => charts.reduce((acc, chart) => {
+    const category = chart.category || 'OTHER';
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(chart);
+    return acc;
+  }, {}), [charts]);
+
+  const chartCategories = useMemo(() => Object.keys(groupedCharts).sort(), [groupedCharts]);
+
+  const effectiveChartCategory = chartCategories.includes(activeChartCategory)
+    ? activeChartCategory
+    : chartCategories[0] || null;
 
   if (!airportIcao) {
     return (
@@ -211,38 +225,53 @@ export default function AirportPanel({
       key: 'charts',
       label: 'Charts',
       children: chartsLoading ? <Spin/> : (
-        <List
-          size="small"
-          dataSource={charts}
-          locale={{emptyText: 'No charts available'}}
-          renderItem={(chart) => (
-            <List.Item
-              className={selectedChart?.id === chart.id ? 'selectable-list-item is-selected' : 'selectable-list-item'}
-              onClick={() => onChartSelect(chart)}
-              actions={[
-                chart.is_georeferenced ? (
-                  <Button
-                    key="georef"
-                    size="small"
-                    type={georefChart?.id === chart.id ? 'primary' : 'default'}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onGeorefChartChange(georefChart?.id === chart.id ? null : chart);
-                    }}
-                  >
-                    Geo
-                  </Button>
-                ) : null,
-              ].filter(Boolean)}
-            >
-              <List.Item.Meta
-                avatar={<FileImageOutlined/>}
-                title={chart.name || chart.id}
-                description={[chart.category, chart.index_number].filter(Boolean).join(' / ')}
-              />
-            </List.Item>
-          )}
-        />
+        charts.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No charts available"/>
+        ) : (
+          <Tabs
+            size="small"
+            activeKey={effectiveChartCategory}
+            onChange={setActiveChartCategory}
+            items={chartCategories.map((category) => ({
+              key: category,
+              label: `${category} (${groupedCharts[category].length})`,
+              children: (
+                <List
+                  size="small"
+                  dataSource={groupedCharts[category]}
+                  locale={{emptyText: 'No charts in this category'}}
+                  renderItem={(chart) => (
+                    <List.Item
+                      className={selectedChart?.id === chart.id ? 'selectable-list-item is-selected' : 'selectable-list-item'}
+                      onClick={() => onChartSelect(chart)}
+                      actions={[
+                        chart.is_georeferenced ? (
+                          <Button
+                            key="georef"
+                            size="small"
+                            type={georefChart?.id === chart.id ? 'primary' : 'default'}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onGeorefChartChange(georefChart?.id === chart.id ? null : chart);
+                            }}
+                          >
+                            Geo
+                          </Button>
+                        ) : null,
+                      ].filter(Boolean)}
+                    >
+                      <List.Item.Meta
+                        avatar={<FileImageOutlined/>}
+                        title={chart.name || chart.id}
+                        description={chart.index_number}
+                      />
+                    </List.Item>
+                  )}
+                />
+              ),
+            }))}
+          />
+        )
       ),
     },
   ];

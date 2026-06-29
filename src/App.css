@@ -15,10 +15,18 @@
   gap: 10px;
 }
 
+.landing-page__brand-main {
+  color: #1677ff;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
 .landing-page__brand-product {
   color: rgba(0, 0, 0, 0.45);
-  font-size: 0.72em;
-  font-weight: 500;
+  font-size: 21px;
+  font-weight: 600;
 }
 
 .app-shell {

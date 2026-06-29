@@ -219,6 +219,7 @@ export default function EfbMap({
   const routeFitSignatureRef = useRef('');
   const appliedStyleRef = useRef(MAP_STYLES[0].url);
   const [styleId, setStyleId] = useState('ifr-high');
+  const [mapLoaded, setMapLoaded] = useState(false);
 
   const style = useMemo(() => MAP_STYLES.find((item) => item.id === styleId) || MAP_STYLES[0], [styleId]);
   const ownCid = String(user?.preferred_username || user?.username || user?.sub || '');
@@ -239,6 +240,7 @@ export default function EfbMap({
     });
     map.addControl(new mapboxgl.NavigationControl({showCompass: false}), 'bottom-right');
     window.requestAnimationFrame(() => map.resize());
+    map.on('style.load', () => setMapLoaded(true));
     map.on('error', (event) => {
       console.warn('Mapbox error', event?.error || event);
     });
@@ -250,6 +252,7 @@ export default function EfbMap({
     return () => {
       map.remove();
       mapRef.current = null;
+      setMapLoaded(false);
     };
   }, []);
 
@@ -346,13 +349,23 @@ export default function EfbMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return undefined;
-    const update = () => {
-      if (map.getLayer('georef-chart-layer')) map.removeLayer('georef-chart-layer');
-      if (map.getSource('georef-chart')) map.removeSource('georef-chart');
+    if (!map || !mapLoaded) return undefined;
+
+    const removeGeoref = () => {
+      try {
+        if (map.getLayer('georef-chart-layer')) map.removeLayer('georef-chart-layer');
+        if (map.getSource('georef-chart')) map.removeSource('georef-chart');
+      } catch {
+        // Style may be in a transitional state; safe to ignore.
+      }
+    };
+
+    const applyGeoref = () => {
+      removeGeoref();
       const coordinates = chartCoordinates(georefChart);
       const url = georefChart?.image_day_url || georefChart?.image_day;
-      if (coordinates && url) {
+      if (!coordinates || !url) return;
+      try {
         map.addSource('georef-chart', {type: 'image', url, coordinates});
         map.addLayer({
           id: 'georef-chart-layer',
@@ -360,10 +373,20 @@ export default function EfbMap({
           source: 'georef-chart',
           paint: {'raster-opacity': 0.72},
         });
+      } catch {
+        // Style not ready yet; will retry on style.load.
       }
     };
-    return whenStyleReady(map, update);
-  }, [georefChart]);
+
+    applyGeoref();
+    const onStyleLoad = () => applyGeoref();
+    map.on('style.load', onStyleLoad);
+
+    return () => {
+      map.off('style.load', onStyleLoad);
+      removeGeoref();
+    };
+  }, [georefChart, mapLoaded]);
 
   const mapPresetContent = (
     <div className="map-preset">
