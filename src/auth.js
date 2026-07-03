@@ -19,12 +19,7 @@ export const getStoredToken = () => {
   const raw = localStorage.getItem(TOKEN_KEY);
   if (!raw) return null;
   try {
-    const token = JSON.parse(raw);
-    if (token.expires_at && token.expires_at <= Date.now()) {
-      localStorage.removeItem(TOKEN_KEY);
-      return null;
-    }
-    return token;
+    return JSON.parse(raw);
   } catch {
     localStorage.removeItem(TOKEN_KEY);
     return null;
@@ -32,8 +27,10 @@ export const getStoredToken = () => {
 };
 
 export const storeToken = (token) => {
+  const existing = getStoredToken();
   const stored = {
-    ...token,
+    access_token: token.access_token,
+    refresh_token: token.refresh_token || existing?.refresh_token || null,
     expires_at: Date.now() + Math.max(Number(token.expires_in || 0) - 30, 0) * 1000,
   };
   localStorage.setItem(TOKEN_KEY, JSON.stringify(stored));
@@ -41,6 +38,51 @@ export const storeToken = (token) => {
 };
 
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+
+export const isTokenExpired = () => {
+  const token = getStoredToken();
+  if (!token) return true;
+  return !token.expires_at || token.expires_at <= Date.now();
+};
+
+let refreshPromise = null;
+
+export const refreshAccessToken = async () => {
+  if (refreshPromise) return refreshPromise;
+  const token = getStoredToken();
+  if (!token || !token.refresh_token) {
+    return null;
+  }
+  refreshPromise = (async () => {
+    try {
+      const newToken = await oauthApi.token({
+        grant_type: 'refresh_token',
+        client_id: OAUTH_CLIENT_ID,
+        refresh_token: token.refresh_token,
+      });
+      return storeToken(newToken);
+    } catch {
+      const current = getStoredToken();
+      if (current && current.refresh_token === token.refresh_token) {
+        clearToken();
+      }
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+};
+
+export const getValidAccessToken = async () => {
+  const token = getStoredToken();
+  if (!token) return null;
+  if (token.expires_at && token.expires_at > Date.now()) {
+    return token.access_token;
+  }
+  const refreshed = await refreshAccessToken();
+  return refreshed ? refreshed.access_token : null;
+};
 
 export const startLogin = async () => {
   if (!OAUTH_CLIENT_ID) {

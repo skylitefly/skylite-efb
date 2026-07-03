@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import './App.css';
 import {fetchWhazzup, navApi, oauthApi} from './api';
-import {clearToken, completeLoginFromCallback, getStoredToken, startLogin} from './auth';
+import {clearToken, completeLoginFromCallback, getStoredToken, getValidAccessToken, startLogin} from './auth';
 import GlobalSearch from './components/GlobalSearch';
 import SidePanel from './components/SidePanel';
 import EfbMap from './components/EfbMap';
@@ -141,11 +141,16 @@ export default function App() {
       try {
         let stored = await completeLoginFromCallback();
         if (!stored) stored = getStoredToken();
-        if (!stored?.access_token) return;
+        if (!stored) return;
+        const accessToken = await getValidAccessToken();
+        if (!accessToken) {
+          clearToken();
+          return;
+        }
         setToken(stored);
-        const profile = await oauthApi.userInfo(stored.access_token);
+        const profile = await oauthApi.userInfo(accessToken);
         setUser(profile);
-        const pref = await oauthApi.preferences(stored.access_token);
+        const pref = await oauthApi.preferences(accessToken);
         setPreferences(pref.preferences || {});
       } catch (error) {
         clearToken();
@@ -178,11 +183,12 @@ export default function App() {
 
   const patchPreferences = useCallback(async (next) => {
     setPreferences((current) => ({...current, ...next}));
-    if (!token?.access_token) return;
-    const response = await oauthApi.patchPreferences(token.access_token, next);
+    const accessToken = await getValidAccessToken();
+    if (!accessToken) return;
+    const response = await oauthApi.patchPreferences(accessToken, next);
     setPreferences(response.preferences || {});
     message.success('Preferences saved');
-  }, [token]);
+  }, []);
 
   const openAirport = useCallback((airport) => {
     const icao = typeof airport === 'string' ? airport : airport?.icao;
