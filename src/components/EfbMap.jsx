@@ -11,6 +11,7 @@ import {
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import {MAP_STYLES, MAPBOX_TOKEN} from '../config';
+import {buildRouteLineGeoJson, getUnwrappedRouteCoordinates} from '../utils/mapRouteUtils';
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -18,14 +19,7 @@ const {Text} = Typography;
 
 const emptyCollection = {type: 'FeatureCollection', features: []};
 
-const pointsToLine = (points) => ({
-  type: 'FeatureCollection',
-  features: points?.length > 1 ? [{
-    type: 'Feature',
-    geometry: {type: 'LineString', coordinates: points.map((point) => [point.longitude, point.latitude])},
-    properties: {},
-  }] : [],
-});
+const pointsToLine = (points) => buildRouteLineGeoJson(points);
 
 const pointsToFeatures = (points, section) => ({
   type: 'FeatureCollection',
@@ -100,13 +94,11 @@ const addPointLayers = (map, id, color) => {
 };
 
 const fitRouteBounds = (map, route) => {
-  const coordinates = [
+  const coordinates = getUnwrappedRouteCoordinates([
     ...(route?.departure || []),
     ...(route?.cruise || []),
     ...(route?.arrival || []),
-  ]
-    .filter((point) => Number.isFinite(Number(point.longitude)) && Number.isFinite(Number(point.latitude)))
-    .map((point) => [Number(point.longitude), Number(point.latitude)]);
+  ]);
   if (coordinates.length < 2) return;
   const bounds = coordinates.reduce(
     (current, coordinate) => current.extend(coordinate),
@@ -236,6 +228,7 @@ export default function EfbMap({
       center: [105, 35],
       zoom: 3.5,
       minZoom: 2,
+      renderWorldCopies: true,
       attributionControl: false,
     });
     map.addControl(new mapboxgl.NavigationControl({showCompass: false}), 'bottom-right');
