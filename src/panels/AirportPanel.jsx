@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Button, Collapse, Descriptions, Empty, List, Space, Spin, Table, Tabs, Typography, message} from 'antd';
-import {FileImageOutlined, ReloadOutlined} from '@ant-design/icons';
+import {BlockOutlined, FileImageOutlined, ReloadOutlined} from '@ant-design/icons';
 import {chartsApi, navApi, weatherApi} from '../api';
 
 const {Text, Title, Paragraph} = Typography;
@@ -248,15 +248,14 @@ export default function AirportPanel({
                         chart.is_georeferenced ? (
                           <Button
                             key="georef"
-                            size="small"
+                            icon={<BlockOutlined/>}
+                            title="Toggle georeference"
                             type={georefChart?.id === chart.id ? 'primary' : 'default'}
                             onClick={(event) => {
                               event.stopPropagation();
                               onGeorefChartChange(georefChart?.id === chart.id ? null : chart);
                             }}
-                          >
-                            Geo
-                          </Button>
+                          />
                         ) : null,
                       ].filter(Boolean)}
                     >
