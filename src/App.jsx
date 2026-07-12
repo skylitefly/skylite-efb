@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Button, Layout, Menu, Spin, Typography, message} from 'antd';
 import {
   CompassOutlined,
@@ -33,6 +33,20 @@ const panelItems = Object.entries(panelMeta).map(([key, item]) => ({
   icon: item.icon,
   label: item.title,
 }));
+
+const FLIGHT_PLAN_STORAGE_KEY = 'skylite-efb.flight-plan';
+
+const readStoredFlightPlan = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = window.sessionStorage.getItem(FLIGHT_PLAN_STORAGE_KEY);
+    if (!stored) return null;
+    const plan = JSON.parse(stored);
+    return plan && typeof plan === 'object' ? plan : null;
+  } catch {
+    return null;
+  }
+};
 
 const onlinePilotForUser = (whazzup, user) => {
   const cid = String(user?.preferred_username || user?.username || user?.sub || '');
@@ -120,10 +134,10 @@ export default function App() {
   const [preferences, setPreferences] = useState({});
   const [sideOpen, setSideOpen] = useState(true);
   const [activePanel, setActivePanel] = useState('flightPlan');
-  const [plan, setPlan] = useState(null);
-  const [routeOrigin, setRouteOrigin] = useState(null);
-  const [routeDestination, setRouteDestination] = useState(null);
-  const [routeText, setRouteText] = useState('');
+  const [plan, setPlan] = useState(readStoredFlightPlan);
+  const [routeOrigin, setRouteOrigin] = useState(() => plan?.origin ? {icao: plan.origin} : null);
+  const [routeDestination, setRouteDestination] = useState(() => plan?.destination ? {icao: plan.destination} : null);
+  const [routeText, setRouteText] = useState(() => plan?.route || '');
   const [routeData, setRouteData] = useState(null);
   const [selectedDeparture, setSelectedDeparture] = useState(null);
   const [selectedArrival, setSelectedArrival] = useState(null);
@@ -134,6 +148,19 @@ export default function App() {
   const [whazzup, setWhazzup] = useState(null);
   const [networkTraffic, setNetworkTraffic] = useState(false);
   const [movingMap, setMovingMap] = useState(false);
+  const shouldRestoreRoute = useRef(Boolean(plan?.route));
+
+  useEffect(() => {
+    try {
+      if (plan) {
+        window.sessionStorage.setItem(FLIGHT_PLAN_STORAGE_KEY, JSON.stringify(plan));
+      } else {
+        window.sessionStorage.removeItem(FLIGHT_PLAN_STORAGE_KEY);
+      }
+    } catch {
+      // Session storage is optional; the in-memory plan remains usable.
+    }
+  }, [plan]);
 
   useEffect(() => {
     const boot = async () => {
@@ -227,6 +254,17 @@ export default function App() {
     }
   }, [plan, routeData, routeDestination, routeOrigin]);
 
+  useEffect(() => {
+    if (!shouldRestoreRoute.current) return;
+    shouldRestoreRoute.current = false;
+    parseRouteText({
+      text: plan.route,
+      origin: plan.origin,
+      destination: plan.destination,
+      silent: true,
+    });
+  }, [parseRouteText, plan]);
+
   const updatePlan = useCallback(async (nextPlan) => {
     setPlan(nextPlan);
     const nextRoute = nextPlan?.route || '';
@@ -279,6 +317,11 @@ export default function App() {
   const parseRoute = useCallback(async () => {
     await parseRouteText({text: routeText});
   }, [parseRouteText, routeText]);
+
+  const handleRouteTextChange = useCallback((value) => {
+    setRouteText(value);
+    setPlan((current) => current ? {...current, route: value} : current);
+  }, []);
 
   const handleRouteAirportChange = useCallback((target, airport) => {
     if (target === 'origin') {
@@ -391,7 +434,7 @@ export default function App() {
                   routeDestination={routeDestination}
                   selectedDeparture={selectedDeparture}
                   selectedArrival={selectedArrival}
-                  onRouteTextChange={setRouteText}
+                  onRouteTextChange={handleRouteTextChange}
                   onParseRoute={parseRoute}
                   onAutoRoute={autoRoute}
                   onProcedureSelect={(mode, procedure) => {
