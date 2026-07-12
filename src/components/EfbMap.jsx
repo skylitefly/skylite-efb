@@ -284,6 +284,7 @@ export default function EfbMap({
   user,
   onTrafficSelect,
   onCloseChart,
+  onGeorefChartChange,
   onNetworkTrafficChange,
   onMovingMapChange,
 }) {
@@ -294,6 +295,12 @@ export default function EfbMap({
   const appliedStyleRef = useRef(MAP_STYLES[0].url);
   const [styleId, setStyleId] = useState('ifr-high');
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [georefOpacity, setGeorefOpacity] = useState(0.75);
+  const georefOpacityRef = useRef(georefOpacity);
+
+  useEffect(() => {
+    georefOpacityRef.current = georefOpacity;
+  }, [georefOpacity]);
 
   const style = useMemo(() => MAP_STYLES.find((item) => item.id === styleId) || MAP_STYLES[0], [styleId]);
   const ownCid = String(user?.preferred_username || user?.username || user?.sub || '');
@@ -456,7 +463,7 @@ export default function EfbMap({
           id: 'georef-chart-layer',
           type: 'raster',
           source: 'georef-chart',
-          paint: {'raster-opacity': 0.72},
+          paint: {'raster-opacity': georefOpacityRef.current},
         });
       } catch {
         // Style not ready yet; will retry on style.load.
@@ -472,6 +479,12 @@ export default function EfbMap({
       removeGeoref();
     };
   }, [georefChart, mapLoaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded || !map.getLayer('georef-chart-layer')) return;
+    map.setPaintProperty('georef-chart-layer', 'raster-opacity', georefOpacity);
+  }, [georefOpacity, mapLoaded]);
 
   const mapPresetContent = (
     <div className="map-preset">
@@ -506,6 +519,28 @@ export default function EfbMap({
           <Button className={movingMap ? 'is-active' : ''} icon={<AimOutlined/>} onClick={() => onMovingMapChange(!movingMap)}/>
         </Tooltip>
       </div>
+      {georefChart && (
+        <div className="georef-overlay">
+          <div className="georef-overlay__header">
+            <Text className="georef-overlay__title" ellipsis={{tooltip: georefChart.name || georefChart.id}}>
+              {georefChart.name || georefChart.id}
+            </Text>
+            <Button
+              type="text"
+              size="small"
+              icon={<CloseOutlined/>}
+              aria-label="Close georeferenced chart"
+              onClick={() => onGeorefChartChange?.(null)}
+            />
+          </div>
+          <Segmented
+            block
+            value={Math.round(georefOpacity * 100)}
+            options={[25, 50, 75, 100].map((value) => ({label: `${value}%`, value}))}
+            onChange={(value) => setGeorefOpacity(Number(value) / 100)}
+          />
+        </div>
+      )}
       {selectedChart && <ChartOverlay chart={selectedChart} onClose={onCloseChart}/>}
     </div>
   );

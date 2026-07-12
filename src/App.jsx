@@ -486,6 +486,7 @@ export default function App() {
               message.info(`${traffic.callsign || 'Traffic'} ${traffic.altitude || ''}`);
             }}
             onCloseChart={() => setSelectedChart(null)}
+            onGeorefChartChange={setGeorefChart}
             onNetworkTrafficChange={setNetworkTraffic}
             onMovingMapChange={handleMovingMapChange}
           />
