@@ -151,35 +151,113 @@ const chartCoordinates = (chart) => {
 function ChartOverlay({chart, onClose}) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({x: 0, y: 0});
+  const offsetRef = useRef(offset);
   const dragRef = useRef(null);
+  const inertiaFrameRef = useRef(null);
+
+  const setOffsetValue = (value) => {
+    const next = typeof value === 'function' ? value(offsetRef.current) : value;
+    offsetRef.current = next;
+    setOffset(next);
+  };
+
+  const stopInertia = () => {
+    if (inertiaFrameRef.current !== null) {
+      window.cancelAnimationFrame(inertiaFrameRef.current);
+      inertiaFrameRef.current = null;
+    }
+  };
+
+  const startInertia = (initialVelocity) => {
+    const speed = Math.hypot(initialVelocity.x, initialVelocity.y);
+    if (speed < 30) return;
+
+    let velocity = initialVelocity;
+    let previousTime = performance.now();
+    const step = (time) => {
+      const elapsed = Math.min(time - previousTime, 50);
+      previousTime = time;
+      setOffsetValue((current) => ({
+        x: current.x + velocity.x * elapsed / 1000,
+        y: current.y + velocity.y * elapsed / 1000,
+      }));
+      const decay = 0.998 ** elapsed;
+      velocity = {x: velocity.x * decay, y: velocity.y * decay};
+      if (Math.hypot(velocity.x, velocity.y) < 5) {
+        inertiaFrameRef.current = null;
+        return;
+      }
+      inertiaFrameRef.current = window.requestAnimationFrame(step);
+    };
+    inertiaFrameRef.current = window.requestAnimationFrame(step);
+  };
+
+  const finishDrag = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const now = performance.now();
+    const history = [...drag.history, {x: event.clientX, y: event.clientY, time: now}]
+      .filter((sample) => now - sample.time <= 100);
+    const first = history[0];
+    const last = history.at(-1);
+    const duration = last && first ? Math.max(last.time - first.time, 1) : 1;
+    const velocity = first && last
+      ? {x: (last.x - first.x) * 1000 / duration, y: (last.y - first.y) * 1000 / duration}
+      : {x: 0, y: 0};
+    dragRef.current = null;
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // The pointer may already have been released by the browser.
+    }
+    startInertia(velocity);
+  };
+
+  useEffect(() => () => stopInertia(), []);
 
   return (
     <div className="chart-overlay">
       <Space className="chart-overlay__tools">
         <Button icon={<PlusOutlined/>} onClick={() => setScale((value) => Math.min(value + 0.2, 5))}/>
         <Button icon={<MinusOutlined/>} onClick={() => setScale((value) => Math.max(value - 0.2, 0.4))}/>
-        <Button icon={<AimOutlined/>} onClick={() => { setScale(1); setOffset({x: 0, y: 0}); }}/>
+        <Button icon={<AimOutlined/>} onClick={() => { stopInertia(); setScale(1); setOffsetValue({x: 0, y: 0}); }}/>
         <Button icon={<CloseOutlined/>} onClick={onClose}/>
       </Space>
       <div
         className="chart-overlay__stage"
         onWheel={(event) => {
           event.preventDefault();
+          stopInertia();
           const delta = event.deltaY < 0 ? 0.12 : -0.12;
           setScale((value) => Math.min(5, Math.max(0.4, value + delta)));
         }}
         onPointerDown={(event) => {
+          if (event.pointerType === 'mouse' && event.button !== 0) return;
+          stopInertia();
           event.currentTarget.setPointerCapture(event.pointerId);
-          dragRef.current = {x: event.clientX, y: event.clientY, offset};
+          dragRef.current = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            offset: offsetRef.current,
+            history: [{x: event.clientX, y: event.clientY, time: performance.now()}],
+          };
         }}
         onPointerMove={(event) => {
-          if (!dragRef.current) return;
-          setOffset({
-            x: dragRef.current.offset.x + event.clientX - dragRef.current.x,
-            y: dragRef.current.offset.y + event.clientY - dragRef.current.y,
+          const drag = dragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          const now = performance.now();
+          drag.history = [...drag.history, {x: event.clientX, y: event.clientY, time: now}]
+            .filter((sample) => now - sample.time <= 100);
+          setOffsetValue({
+            x: drag.offset.x + event.clientX - drag.x,
+            y: drag.offset.y + event.clientY - drag.y,
           });
         }}
-        onPointerUp={() => { dragRef.current = null; }}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
       >
         <img
           src={chart.image_day_url || chart.image_day}
