@@ -184,6 +184,8 @@ function ChartOverlay({chart, onClose}) {
         <img
           src={chart.image_day_url || chart.image_day}
           alt={chart.name}
+          draggable={false}
+          onDragStart={(event) => event.preventDefault()}
           style={{transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`}}
         />
       </div>

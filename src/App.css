@@ -357,6 +357,8 @@
   align-items: center;
   justify-content: center;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
 .chart-overlay__stage:active {
@@ -370,6 +372,7 @@
   transform-origin: center center;
   user-select: none;
   pointer-events: none;
+  -webkit-user-drag: none;
 }
 
 @media (max-width: 1100px) {
