@@ -12,6 +12,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import {MAP_STYLES, MAPBOX_TOKEN} from '../config';
 import {buildRouteLineGeoJson, getUnwrappedRouteCoordinates} from '../utils/mapRouteUtils';
+import {addAerowayLayers, setAerowayLayerVisibility} from '../utils/mapboxAeroway';
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -279,6 +280,7 @@ export default function EfbMap({
   whazzup,
   networkTraffic,
   movingMap,
+  showAirportDetail,
   user,
   onTrafficSelect,
   onCloseChart,
@@ -419,6 +421,16 @@ export default function EfbMap({
     };
     return whenStyleReady(map, update);
   }, [movingMap, networkTraffic, ownCid, user, whazzup]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return undefined;
+    const update = () => {
+      addAerowayLayers(map);
+      setAerowayLayerVisibility(map, showAirportDetail);
+    };
+    return whenStyleReady(map, update);
+  }, [showAirportDetail]);
 
   useEffect(() => {
     const map = mapRef.current;

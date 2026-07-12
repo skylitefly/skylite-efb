@@ -480,6 +480,7 @@ export default function App() {
             whazzup={whazzup}
             networkTraffic={networkTraffic}
             movingMap={movingMap}
+            showAirportDetail={preferences.showAirportDetailOnMap ?? true}
             user={user}
             onTrafficSelect={(traffic) => {
               message.info(`${traffic.callsign || 'Traffic'} ${traffic.altitude || ''}`);

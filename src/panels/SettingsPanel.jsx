@@ -1,4 +1,4 @@
-import {Button, Form, Input, Select, Space, Typography} from 'antd';
+import {Button, Form, Input, Select, Space, Switch, Typography} from 'antd';
 
 const {Text} = Typography;
 
@@ -12,6 +12,7 @@ export default function SettingsPanel({preferences, onPreferenceChange, onLogout
           initialValues={{
             simbriefUsername: preferences.simbriefUsername || '',
             weatherRefreshIntervalSeconds: preferences.weatherRefreshIntervalSeconds ?? 300,
+            showAirportDetailOnMap: preferences.showAirportDetailOnMap ?? true,
           }}
           onFinish={onPreferenceChange}
         >
@@ -28,6 +29,13 @@ export default function SettingsPanel({preferences, onPreferenceChange, onLogout
                 {value: 0, label: 'Off'},
               ]}
             />
+          </Form.Item>
+          <Form.Item
+            label="Show airport detail on map"
+            name="showAirportDetailOnMap"
+            valuePropName="checked"
+          >
+            <Switch/>
           </Form.Item>
           <Space>
             <Button type="primary" htmlType="submit">Save</Button>
