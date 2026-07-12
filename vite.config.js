@@ -19,7 +19,7 @@ export default defineConfig({
         background_color: '#ffffff',
         display: 'standalone',
         icons: [
-          {src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml'},
+          {src: '/favicon.png', sizes: '200x200', type: 'image/png'},
         ],
       },
     }),
