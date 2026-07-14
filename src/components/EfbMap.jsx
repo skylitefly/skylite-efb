@@ -12,6 +12,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import {MAP_STYLES, MAPBOX_TOKEN} from '../config';
 import {buildRouteLineGeoJson, getUnwrappedRouteCoordinates} from '../utils/mapRouteUtils';
+import {addAerowayLayers, setAerowayLayerVisibility} from '../utils/mapboxAeroway';
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -151,39 +152,119 @@ const chartCoordinates = (chart) => {
 function ChartOverlay({chart, onClose}) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({x: 0, y: 0});
+  const offsetRef = useRef(offset);
   const dragRef = useRef(null);
+  const inertiaFrameRef = useRef(null);
+
+  const setOffsetValue = (value) => {
+    const next = typeof value === 'function' ? value(offsetRef.current) : value;
+    offsetRef.current = next;
+    setOffset(next);
+  };
+
+  const stopInertia = () => {
+    if (inertiaFrameRef.current !== null) {
+      window.cancelAnimationFrame(inertiaFrameRef.current);
+      inertiaFrameRef.current = null;
+    }
+  };
+
+  const startInertia = (initialVelocity) => {
+    const speed = Math.hypot(initialVelocity.x, initialVelocity.y);
+    if (speed < 30) return;
+
+    let velocity = initialVelocity;
+    let previousTime = performance.now();
+    const step = (time) => {
+      const elapsed = Math.min(time - previousTime, 50);
+      previousTime = time;
+      setOffsetValue((current) => ({
+        x: current.x + velocity.x * elapsed / 1000,
+        y: current.y + velocity.y * elapsed / 1000,
+      }));
+      const decay = 0.998 ** elapsed;
+      velocity = {x: velocity.x * decay, y: velocity.y * decay};
+      if (Math.hypot(velocity.x, velocity.y) < 5) {
+        inertiaFrameRef.current = null;
+        return;
+      }
+      inertiaFrameRef.current = window.requestAnimationFrame(step);
+    };
+    inertiaFrameRef.current = window.requestAnimationFrame(step);
+  };
+
+  const finishDrag = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const now = performance.now();
+    const history = [...drag.history, {x: event.clientX, y: event.clientY, time: now}]
+      .filter((sample) => now - sample.time <= 100);
+    const first = history[0];
+    const last = history.at(-1);
+    const duration = last && first ? Math.max(last.time - first.time, 1) : 1;
+    const velocity = first && last
+      ? {x: (last.x - first.x) * 1000 / duration, y: (last.y - first.y) * 1000 / duration}
+      : {x: 0, y: 0};
+    dragRef.current = null;
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // The pointer may already have been released by the browser.
+    }
+    startInertia(velocity);
+  };
+
+  useEffect(() => () => stopInertia(), []);
 
   return (
     <div className="chart-overlay">
       <Space className="chart-overlay__tools">
         <Button icon={<PlusOutlined/>} onClick={() => setScale((value) => Math.min(value + 0.2, 5))}/>
         <Button icon={<MinusOutlined/>} onClick={() => setScale((value) => Math.max(value - 0.2, 0.4))}/>
-        <Button icon={<AimOutlined/>} onClick={() => { setScale(1); setOffset({x: 0, y: 0}); }}/>
+        <Button icon={<AimOutlined/>} onClick={() => { stopInertia(); setScale(1); setOffsetValue({x: 0, y: 0}); }}/>
         <Button icon={<CloseOutlined/>} onClick={onClose}/>
       </Space>
       <div
         className="chart-overlay__stage"
         onWheel={(event) => {
           event.preventDefault();
+          stopInertia();
           const delta = event.deltaY < 0 ? 0.12 : -0.12;
           setScale((value) => Math.min(5, Math.max(0.4, value + delta)));
         }}
         onPointerDown={(event) => {
+          if (event.pointerType === 'mouse' && event.button !== 0) return;
+          stopInertia();
           event.currentTarget.setPointerCapture(event.pointerId);
-          dragRef.current = {x: event.clientX, y: event.clientY, offset};
+          dragRef.current = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            offset: offsetRef.current,
+            history: [{x: event.clientX, y: event.clientY, time: performance.now()}],
+          };
         }}
         onPointerMove={(event) => {
-          if (!dragRef.current) return;
-          setOffset({
-            x: dragRef.current.offset.x + event.clientX - dragRef.current.x,
-            y: dragRef.current.offset.y + event.clientY - dragRef.current.y,
+          const drag = dragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          const now = performance.now();
+          drag.history = [...drag.history, {x: event.clientX, y: event.clientY, time: now}]
+            .filter((sample) => now - sample.time <= 100);
+          setOffsetValue({
+            x: drag.offset.x + event.clientX - drag.x,
+            y: drag.offset.y + event.clientY - drag.y,
           });
         }}
-        onPointerUp={() => { dragRef.current = null; }}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
       >
         <img
           src={chart.image_day_url || chart.image_day}
           alt={chart.name}
+          draggable={false}
+          onDragStart={(event) => event.preventDefault()}
           style={{transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`}}
         />
       </div>
@@ -199,9 +280,11 @@ export default function EfbMap({
   whazzup,
   networkTraffic,
   movingMap,
+  showAirportDetail,
   user,
   onTrafficSelect,
   onCloseChart,
+  onGeorefChartChange,
   onNetworkTrafficChange,
   onMovingMapChange,
 }) {
@@ -212,6 +295,12 @@ export default function EfbMap({
   const appliedStyleRef = useRef(MAP_STYLES[0].url);
   const [styleId, setStyleId] = useState('ifr-high');
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [georefOpacity, setGeorefOpacity] = useState(0.75);
+  const georefOpacityRef = useRef(georefOpacity);
+
+  useEffect(() => {
+    georefOpacityRef.current = georefOpacity;
+  }, [georefOpacity]);
 
   const style = useMemo(() => MAP_STYLES.find((item) => item.id === styleId) || MAP_STYLES[0], [styleId]);
   const ownCid = String(user?.preferred_username || user?.username || user?.sub || '');
@@ -342,6 +431,16 @@ export default function EfbMap({
 
   useEffect(() => {
     const map = mapRef.current;
+    if (!map) return undefined;
+    const update = () => {
+      addAerowayLayers(map);
+      setAerowayLayerVisibility(map, showAirportDetail);
+    };
+    return whenStyleReady(map, update);
+  }, [showAirportDetail]);
+
+  useEffect(() => {
+    const map = mapRef.current;
     if (!map || !mapLoaded) return undefined;
 
     const removeGeoref = () => {
@@ -364,7 +463,7 @@ export default function EfbMap({
           id: 'georef-chart-layer',
           type: 'raster',
           source: 'georef-chart',
-          paint: {'raster-opacity': 0.72},
+          paint: {'raster-opacity': georefOpacityRef.current},
         });
       } catch {
         // Style not ready yet; will retry on style.load.
@@ -380,6 +479,12 @@ export default function EfbMap({
       removeGeoref();
     };
   }, [georefChart, mapLoaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded || !map.getLayer('georef-chart-layer')) return;
+    map.setPaintProperty('georef-chart-layer', 'raster-opacity', georefOpacity);
+  }, [georefOpacity, mapLoaded]);
 
   const mapPresetContent = (
     <div className="map-preset">
@@ -414,6 +519,28 @@ export default function EfbMap({
           <Button className={movingMap ? 'is-active' : ''} icon={<AimOutlined/>} onClick={() => onMovingMapChange(!movingMap)}/>
         </Tooltip>
       </div>
+      {georefChart && (
+        <div className="georef-overlay">
+          <div className="georef-overlay__header">
+            <Text className="georef-overlay__title" ellipsis={{tooltip: georefChart.name || georefChart.id}}>
+              {georefChart.name || georefChart.id}
+            </Text>
+            <Button
+              type="text"
+              size="small"
+              icon={<CloseOutlined/>}
+              aria-label="Close georeferenced chart"
+              onClick={() => onGeorefChartChange?.(null)}
+            />
+          </div>
+          <Segmented
+            block
+            value={Math.round(georefOpacity * 100)}
+            options={[25, 50, 75, 100].map((value) => ({label: `${value}%`, value}))}
+            onChange={(value) => setGeorefOpacity(Number(value) / 100)}
+          />
+        </div>
+      )}
       {selectedChart && <ChartOverlay chart={selectedChart} onClose={onCloseChart}/>}
     </div>
   );
