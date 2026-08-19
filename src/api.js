@@ -32,6 +32,25 @@ export const navApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  navdataSearch: (query, {category = 'all', limit = 20, near, signal} = {}) => {
+    const search = new URLSearchParams({query, category, limit: String(limit)});
+    if (near) search.set('near', near);
+    return jsonRequest(NAVIGATION_API_BASE_URL, `/api/navdata/search?${search.toString()}`, {signal});
+  },
+  navdataDetail: (category, key, {near} = {}) => {
+    const search = new URLSearchParams();
+    if (near) search.set('near', near);
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return jsonRequest(
+      NAVIGATION_API_BASE_URL,
+      `/api/navdata/${encodeURIComponent(category)}/${encodeURIComponent(key)}${suffix}`,
+    );
+  },
+  airwayDownstream: (airway, from) =>
+    jsonRequest(
+      NAVIGATION_API_BASE_URL,
+      `/api/navdata/airway/${encodeURIComponent(airway)}/downstream?from=${encodeURIComponent(from)}`,
+    ),
 };
 
 export const weatherApi = {

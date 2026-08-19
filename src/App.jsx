@@ -36,15 +36,31 @@ const panelItems = Object.entries(panelMeta).map(([key, item]) => ({
 
 const FLIGHT_PLAN_STORAGE_KEY = 'skylite-efb.flight-plan';
 
+const EMPTY_FLIGHT_PLAN = {
+  callsign: '',
+  aircraft: '',
+  origin: '',
+  destination: '',
+  alternate: '',
+  route: '',
+  cruiseAltitude: '',
+  source: '',
+};
+
+const normalizeFlightPlan = (plan) => ({
+  ...EMPTY_FLIGHT_PLAN,
+  ...(plan && typeof plan === 'object' ? plan : {}),
+});
+
 const readStoredFlightPlan = () => {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined') return EMPTY_FLIGHT_PLAN;
   try {
     const stored = window.sessionStorage.getItem(FLIGHT_PLAN_STORAGE_KEY);
-    if (!stored) return null;
+    if (!stored) return EMPTY_FLIGHT_PLAN;
     const plan = JSON.parse(stored);
-    return plan && typeof plan === 'object' ? plan : null;
+    return plan && typeof plan === 'object' ? normalizeFlightPlan(plan) : EMPTY_FLIGHT_PLAN;
   } catch {
-    return null;
+    return EMPTY_FLIGHT_PLAN;
   }
 };
 
@@ -152,11 +168,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      if (plan) {
-        window.sessionStorage.setItem(FLIGHT_PLAN_STORAGE_KEY, JSON.stringify(plan));
-      } else {
-        window.sessionStorage.removeItem(FLIGHT_PLAN_STORAGE_KEY);
-      }
+      window.sessionStorage.setItem(FLIGHT_PLAN_STORAGE_KEY, JSON.stringify(plan));
     } catch {
       // Session storage is optional; the in-memory plan remains usable.
     }
@@ -208,13 +220,14 @@ export default function App() {
     };
   }, [movingMap, networkTraffic]);
 
-  const patchPreferences = useCallback(async (next) => {
+  const patchPreferences = useCallback(async (next, options = {}) => {
     setPreferences((current) => ({...current, ...next}));
     const accessToken = await getValidAccessToken();
     if (!accessToken) return;
     const response = await oauthApi.patchPreferences(accessToken, next);
     setPreferences(response.preferences || {});
-    message.success('Preferences saved');
+    if (options.silent) return;
+    message.success(options.successMessage || 'Preferences saved');
   }, []);
 
   const openAirport = useCallback((airport) => {
@@ -226,7 +239,10 @@ export default function App() {
   }, []);
 
   const parseRouteText = useCallback(async ({text, origin, destination, silent = false}) => {
-    if (!text?.trim()) return null;
+    if (!text?.trim()) {
+      setRouteData((current) => (current ? {...current, route: null} : null));
+      return null;
+    }
     const endpoints = routeTextEndpoints(text);
     const resolvedOrigin = origin || routeOrigin?.icao || routeData?.origin?.icao || plan?.origin || endpoints.origin;
     const resolvedDestination = destination || routeDestination?.icao || routeData?.destination?.icao || plan?.destination || endpoints.destination;
@@ -265,25 +281,32 @@ export default function App() {
     });
   }, [parseRouteText, plan]);
 
-  const updatePlan = useCallback(async (nextPlan) => {
-    setPlan(nextPlan);
-    const nextRoute = nextPlan?.route || '';
-    const nextOrigin = nextPlan?.origin ? {icao: nextPlan.origin} : null;
-    const nextDestination = nextPlan?.destination ? {icao: nextPlan.destination} : null;
+  const updatePlan = useCallback(async (nextPlan, extras = {}) => {
+    const resolved = normalizeFlightPlan(nextPlan);
+    setPlan(resolved);
+    const nextRoute = resolved.route || '';
+    const nextOrigin = resolved.origin ? {icao: resolved.origin} : null;
+    const nextDestination = resolved.destination ? {icao: resolved.destination} : null;
     setRouteText(nextRoute);
     setRouteOrigin(nextOrigin);
     setRouteDestination(nextDestination);
-    setSelectedDeparture(null);
-    setSelectedArrival(null);
+    setSelectedDeparture(extras.selectedDeparture ?? null);
+    setSelectedArrival(extras.selectedArrival ?? null);
     setProcedurePreview(null);
     if (nextRoute) {
       await parseRouteText({
         text: nextRoute,
-        origin: nextPlan?.origin,
-        destination: nextPlan?.destination,
+        origin: resolved.origin,
+        destination: resolved.destination,
         silent: false,
       });
+      return;
     }
+    setRouteData(nextOrigin || nextDestination ? {
+      origin: nextOrigin,
+      destination: nextDestination,
+      route: null,
+    } : null);
   }, [parseRouteText]);
 
   const autoRoute = useCallback(async () => {
@@ -304,7 +327,7 @@ export default function App() {
       setRouteDestination(data.destination || {icao: destination});
       setSelectedDeparture(data.selected_departure || selectedDeparture || null);
       setSelectedArrival(data.selected_arrival || selectedArrival || null);
-      setPlan((current) => ({...(current || {}), origin, destination, route: data.route?.string || ''}));
+      setPlan((current) => ({...normalizeFlightPlan(current), origin, destination, route: data.route?.string || ''}));
       setActivePanel('route');
       setSideOpen(true);
     } catch (error) {
@@ -314,13 +337,13 @@ export default function App() {
     }
   }, [plan, routeData, routeDestination, routeOrigin, selectedArrival, selectedDeparture]);
 
-  const parseRoute = useCallback(async () => {
-    await parseRouteText({text: routeText});
+  const parseRoute = useCallback(async (text = routeText) => {
+    await parseRouteText({text});
   }, [parseRouteText, routeText]);
 
   const handleRouteTextChange = useCallback((value) => {
     setRouteText(value);
-    setPlan((current) => current ? {...current, route: value} : current);
+    setPlan((current) => ({...normalizeFlightPlan(current), route: value}));
   }, []);
 
   const handleRouteAirportChange = useCallback((target, airport) => {
@@ -328,13 +351,13 @@ export default function App() {
       setRouteOrigin(airport);
       setSelectedDeparture(null);
       setProcedurePreview(null);
-      setPlan((current) => current ? {...current, origin: airport.icao} : current);
+      setPlan((current) => ({...normalizeFlightPlan(current), origin: airport.icao}));
     }
     if (target === 'destination') {
       setRouteDestination(airport);
       setSelectedArrival(null);
       setProcedurePreview(null);
-      setPlan((current) => current ? {...current, destination: airport.icao} : current);
+      setPlan((current) => ({...normalizeFlightPlan(current), destination: airport.icao}));
     }
     setRouteData((current) => ({
       ...(current || {}),
@@ -419,8 +442,9 @@ export default function App() {
               <div className={activePanel === 'flightPlan' ? 'panel-pane is-active' : 'panel-pane'}>
                 <FlightPlanPanel
                   plan={plan}
-                  user={user}
                   preferences={preferences}
+                  selectedDeparture={selectedDeparture}
+                  selectedArrival={selectedArrival}
                   onPlanChange={updatePlan}
                   onPreferenceChange={patchPreferences}
                   onOpenAirport={openAirport}

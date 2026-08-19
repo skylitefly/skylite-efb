@@ -169,9 +169,35 @@
   background: #ffffff;
 }
 
-.route-textarea {
+.route-editor {
   margin-bottom: 10px;
+}
+
+.route-textarea {
+  margin-bottom: 0;
   resize: none;
+}
+
+.route-editor-actions {
+  display: flex;
+  width: 100%;
+}
+
+.route-editor-actions > .ant-btn {
+  flex: 1;
+}
+
+.route-editor-actions > .ant-btn:first-child {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.route-editor-actions > .ant-btn:last-child {
+  margin-inline-start: -1px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .route-header {
@@ -230,6 +256,27 @@
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.add-leg-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-leg-list {
+  min-height: 200px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.load-flightplan-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
 }
 
 .selectable-list-item {

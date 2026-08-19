@@ -1,7 +1,8 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {Button, Dropdown, Input, List, Segmented, Space, Tag, Typography, message} from 'antd';
 import {ArrowLeftOutlined, MoreOutlined, PlusOutlined, ThunderboltOutlined} from '@ant-design/icons';
 import AirportSearchModal from '../components/AirportSearchModal';
+import AddRouteLegModal from '../components/AddRouteLegModal';
 import {navApi} from '../api';
 
 const {Text} = Typography;
@@ -15,6 +16,17 @@ const procedureRunways = (procedures) => {
 };
 
 const procedureNames = (procedures) => ['Direct', ...Array.from(new Set(procedures.map((item) => item.procedure))).sort()];
+
+const pointIdent = (point) => point?.ident || point?.icao || '';
+
+const appendRouteLeg = (routeText, previousIdent, via, toIdent) => {
+  const tokens = String(routeText || '').trim().split(/\s+/).filter(Boolean);
+  const last = tokens.at(-1);
+  if (previousIdent && last !== previousIdent) tokens.push(previousIdent);
+  if (via === 'DCT') tokens.push('DCT', toIdent);
+  else tokens.push(via, toIdent);
+  return tokens.join(' ');
+};
 
 function ProcedureChooser({mode, airport, procedures, selected, onBack, onPreview, onSelect}) {
   const [runway, setRunway] = useState(selected?.runway || 'ALL');
@@ -95,6 +107,74 @@ function ProcedureChooser({mode, airport, procedures, selected, onBack, onPrevie
   );
 }
 
+function RouteEditor({value, onChange, onParse}) {
+  const [focused, setFocused] = useState(false);
+  const snapshotRef = useRef(value);
+  const skipBlurParse = useRef(false);
+  const textareaRef = useRef(null);
+
+  const blurTextarea = () => {
+    const node = textareaRef.current;
+    node?.resizableTextArea?.textArea?.blur?.();
+    node?.blur?.();
+  };
+
+  return (
+    <div className="route-editor">
+      <Input.TextArea
+        ref={textareaRef}
+        className="route-textarea"
+        rows={4}
+        value={value}
+        onChange={(event) => onChange(event.target.value.toUpperCase())}
+        onFocus={() => {
+          snapshotRef.current = value;
+          setFocused(true);
+        }}
+        onBlur={() => {
+          setFocused(false);
+          if (skipBlurParse.current) {
+            skipBlurParse.current = false;
+            return;
+          }
+          onParse(value);
+        }}
+        onPressEnter={(event) => {
+          if (event.ctrlKey || event.metaKey) onParse(value);
+        }}
+        placeholder="Enter route as text"
+      />
+      {focused && (
+        <div className="route-editor-actions">
+          <Button
+            type="primary"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              skipBlurParse.current = true;
+              setFocused(false);
+              onParse(value);
+              blurTextarea();
+            }}
+          >
+            Confirm
+          </Button>
+          <Button
+            onMouseDown={(event) => {
+              event.preventDefault();
+              skipBlurParse.current = true;
+              onChange(snapshotRef.current);
+              setFocused(false);
+              blurTextarea();
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RouteHeader() {
   return (
     <div className="route-header">
@@ -146,6 +226,7 @@ export default function RoutePanel({
 }) {
   const [chooser, setChooser] = useState(null);
   const [airportTarget, setAirportTarget] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [departureOptions, setDepartureOptions] = useState([]);
   const [arrivalOptions, setArrivalOptions] = useState([]);
 
@@ -155,6 +236,8 @@ export default function RoutePanel({
   const destinationIcao = airportIcao(destination);
   const routePoints = routeData?.route?.waypoints || [];
   const cruisePoints = routePoints.filter((point) => ![originIcao, destinationIcao].includes(point.ident || point.icao));
+  const previousPoint = cruisePoints.at(-1) || selectedDeparture?.waypoints?.at(-1) || (originIcao ? {ident: originIcao} : null);
+  const previousIdent = pointIdent(previousPoint);
 
   useEffect(() => {
     if (!originIcao) {
@@ -253,16 +336,10 @@ export default function RoutePanel({
 
   return (
     <div className="panel-content route-panel">
-      <Input.TextArea
-        className="route-textarea"
-        rows={4}
+      <RouteEditor
         value={routeText}
-        onChange={(event) => onRouteTextChange(event.target.value.toUpperCase())}
-        onBlur={onParseRoute}
-        onPressEnter={(event) => {
-          if (event.ctrlKey || event.metaKey) onParseRoute();
-        }}
-        placeholder="Enter route as text"
+        onChange={onRouteTextChange}
+        onParse={onParseRoute}
       />
       <RouteHeader/>
       <div className="route-timeline">
@@ -311,9 +388,10 @@ export default function RoutePanel({
             </Button>
           }
         />
-        {cruisePoints.length ? cruisePoints.map((point, index) => (
+        {cruisePoints.map((point, index) => (
           <RoutePoint key={`route-${point.ident}-${index}`} point={point} section="route"/>
-        )) : <AddRow label="Add" disabled/>}
+        ))}
+        <AddRow label="Add" disabled={!previousIdent} onClick={() => setAddOpen(true)}/>
 
         {destinationIcao && (
           <>
@@ -354,6 +432,18 @@ export default function RoutePanel({
         onSelect={(airport) => {
           onRouteAirportChange(airportTarget, airport);
           setAirportTarget(null);
+        }}
+      />
+      <AddRouteLegModal
+        open={addOpen}
+        fromIdent={previousIdent}
+        nearIcao={originIcao}
+        onCancel={() => setAddOpen(false)}
+        onAdd={({via, toIdent}) => {
+          const next = appendRouteLeg(routeText, previousIdent, via, toIdent);
+          onRouteTextChange(next);
+          onParseRoute(next);
+          setAddOpen(false);
         }}
       />
     </div>
