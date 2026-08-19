@@ -359,15 +359,7 @@ export default function EfbMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return undefined;
-    const update = () => {
-      addLineLayer(map, 'route-departure', '#ff6b6b');
-      addLineLayer(map, 'route-cruise', '#1677ff');
-      addLineLayer(map, 'route-arrival', '#16a34a');
-      addLineLayer(map, 'procedure-preview', '#a855f7');
-      addPointLayers(map, 'route-departure', '#ff6b6b');
-      addPointLayers(map, 'route-cruise', '#1677ff');
-      addPointLayers(map, 'route-arrival', '#16a34a');
-      addPointLayers(map, 'procedure-preview', '#a855f7');
+    const applyData = () => {
       map.getSource('route-departure')?.setData(pointsToLine(route?.departure || []));
       map.getSource('route-cruise')?.setData(pointsToLine(route?.cruise || []));
       map.getSource('route-arrival')?.setData(pointsToLine(route?.arrival || []));
@@ -376,6 +368,8 @@ export default function EfbMap({
       map.getSource('route-cruise-points')?.setData(pointsToFeatures(route?.cruise || [], 'cruise'));
       map.getSource('route-arrival-points')?.setData(pointsToFeatures(route?.arrival || [], 'arrival'));
       map.getSource('procedure-preview-points')?.setData(pointsToFeatures(procedurePreview?.waypoints || [], 'preview'));
+    };
+    const fitCamera = () => {
       const fitSignature = JSON.stringify([
         route?.departure?.map((point) => point.ident || point.icao),
         route?.cruise?.map((point) => point.ident || point.icao),
@@ -398,7 +392,25 @@ export default function EfbMap({
         }
       }
     };
-    return whenStyleReady(map, update);
+    // Ensure layers/sources exist (requires style to be loaded).
+    const ensureLayers = () => {
+      addLineLayer(map, 'route-departure', '#ff6b6b');
+      addLineLayer(map, 'route-cruise', '#1677ff');
+      addLineLayer(map, 'route-arrival', '#16a34a');
+      addLineLayer(map, 'procedure-preview', '#a855f7');
+      addPointLayers(map, 'route-departure', '#ff6b6b');
+      addPointLayers(map, 'route-cruise', '#1677ff');
+      addPointLayers(map, 'route-arrival', '#16a34a');
+      addPointLayers(map, 'procedure-preview', '#a855f7');
+      applyData();
+      fitCamera();
+    };
+    const teardown = whenStyleReady(map, ensureLayers);
+    // Apply data immediately on every change, as long as sources already exist.
+    // setData is safe regardless of style-load state and does not require a re-fit,
+    // so the layer-ensuring path above only runs once the style is ready.
+    applyData();
+    return teardown;
   }, [route, procedurePreview]);
 
   useEffect(() => {
