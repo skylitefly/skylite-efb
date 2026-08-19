@@ -108,6 +108,16 @@ const fitRouteBounds = (map, route) => {
   map.fitBounds(bounds, {padding: 72, duration: 700, maxZoom: 8});
 };
 
+const fitProcedurePreviewBounds = (map, preview) => {
+  const coordinates = getUnwrappedRouteCoordinates(preview?.waypoints || []);
+  if (coordinates.length < 2) return;
+  const bounds = coordinates.reduce(
+    (current, coordinate) => current.extend(coordinate),
+    new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]),
+  );
+  map.fitBounds(bounds, {padding: 80, duration: 600, maxZoom: 10});
+};
+
 const whenStyleReady = (map, update) => {
   const run = () => {
     if (map.isStyleLoaded()) update();
@@ -292,6 +302,7 @@ export default function EfbMap({
   const mapRef = useRef(null);
   const trafficSelectRef = useRef(onTrafficSelect);
   const routeFitSignatureRef = useRef('');
+  const previewFitSignatureRef = useRef('');
   const appliedStyleRef = useRef(MAP_STYLES[0].url);
   const [styleId, setStyleId] = useState('ifr-high');
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -370,9 +381,21 @@ export default function EfbMap({
         route?.cruise?.map((point) => point.ident || point.icao),
         route?.arrival?.map((point) => point.ident || point.icao),
       ]);
-      if (!procedurePreview && fitSignature !== routeFitSignatureRef.current) {
-        routeFitSignatureRef.current = fitSignature;
-        fitRouteBounds(map, route);
+      const previewSignature = JSON.stringify(
+        (procedurePreview?.waypoints || [])
+          .map((point) => [point.ident || point.icao, point.longitude, point.latitude]),
+      );
+      if (procedurePreview) {
+        if (previewSignature !== previewFitSignatureRef.current) {
+          previewFitSignatureRef.current = previewSignature;
+          fitProcedurePreviewBounds(map, procedurePreview);
+        }
+      } else {
+        previewFitSignatureRef.current = '';
+        if (fitSignature !== routeFitSignatureRef.current) {
+          routeFitSignatureRef.current = fitSignature;
+          fitRouteBounds(map, route);
+        }
       }
     };
     return whenStyleReady(map, update);

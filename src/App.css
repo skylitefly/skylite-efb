@@ -144,6 +144,38 @@
   padding: 14px;
 }
 
+.procedure-page--with-footer {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.procedure-page--with-footer .procedure-page__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.procedure-footer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid #f0f0f0;
+  background: #ffffff;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.procedure-footer__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.2;
+}
+
 .panel-toolbar {
   display: flex;
   justify-content: flex-end;

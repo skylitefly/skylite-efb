@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {Button, Dropdown, Input, List, Segmented, Space, Tag, Typography, message} from 'antd';
-import {ArrowLeftOutlined, MoreOutlined, PlusOutlined, ThunderboltOutlined} from '@ant-design/icons';
+import {ArrowLeftOutlined, CheckOutlined, MoreOutlined, PlusOutlined, ThunderboltOutlined} from '@ant-design/icons';
 import AirportSearchModal from '../components/AirportSearchModal';
 import AddRouteLegModal from '../components/AddRouteLegModal';
 import {navApi} from '../api';
@@ -35,74 +35,90 @@ function ProcedureChooser({mode, airport, procedures, selected, onBack, onPrevie
   const filtered = procedures.filter((item) => runway === 'ALL' || item.runway === runway);
   const transitions = filtered.filter((item) => item.procedure === procedure);
   const selectedItem = transitions.find((item) => (item.transition || 'None') === transition) || transitions[0];
+  const isDirect = procedure === 'Direct';
+  const modeLabel = mode === 'departure' ? 'Departure' : 'Arrival';
+  const icao = airportIcao(airport);
 
   useEffect(() => {
-    onPreview(procedure === 'Direct' ? null : selectedItem || null);
-  }, [onPreview, procedure, selectedItem]);
+    onPreview(isDirect ? null : selectedItem || null);
+  }, [onPreview, isDirect, selectedItem]);
 
-  const transitionOptions = procedure === 'Direct'
+  const transitionOptions = isDirect
     ? [{transition: 'None'}]
     : transitions.length ? transitions : [{transition: 'None'}];
 
+  const summary = isDirect
+    ? 'Direct (no procedure)'
+    : `${procedure}${transition && transition !== 'None' ? ` · ${transition}` : ''}`;
+
   return (
-    <div className="procedure-page">
-      <Button type="text" icon={<ArrowLeftOutlined/>} onClick={onBack}>Back</Button>
-      <Segmented
-        value={runway}
-        onChange={(value) => {
-          setRunway(value);
-          setProcedure('Direct');
-          setTransition('None');
-        }}
-        options={procedureRunways(procedures).map((item) => ({label: item, value: item}))}
-        style={{margin: '8px 0 12px'}}
-      />
-      <div className="procedure-columns">
-        <div>
-          <Text strong>Procedure</Text>
-          <List
-            size="small"
-            dataSource={procedureNames(filtered)}
-            renderItem={(item) => (
-              <List.Item
-                className={procedure === item ? 'selectable-list-item is-selected' : 'selectable-list-item'}
-                onClick={() => {
-                  setProcedure(item);
-                  const nextTransition = filtered.find((option) => option.procedure === item)?.transition || 'None';
-                  setTransition(item === 'Direct' ? 'None' : nextTransition);
-                }}
-              >
-                {item}
-              </List.Item>
-            )}
-          />
-        </div>
-        <div>
-          <Text strong>Transition</Text>
-          <List
-            size="small"
-            dataSource={transitionOptions}
-            renderItem={(item) => {
-              const value = item.transition || 'None';
-              return (
+    <div className="procedure-page procedure-page--with-footer">
+      <div className="procedure-page__body">
+        <Button type="text" icon={<ArrowLeftOutlined/>} onClick={onBack}>Back</Button>
+        <Segmented
+          value={runway}
+          onChange={(value) => {
+            setRunway(value);
+            setProcedure('Direct');
+            setTransition('None');
+          }}
+          options={procedureRunways(procedures).map((item) => ({label: item, value: item}))}
+          style={{margin: '8px 0 12px'}}
+        />
+        <div className="procedure-columns">
+          <div>
+            <Text strong>Procedure</Text>
+            <List
+              size="small"
+              dataSource={procedureNames(filtered)}
+              renderItem={(item) => (
                 <List.Item
-                  className={transition === value ? 'selectable-list-item is-selected' : 'selectable-list-item'}
-                  onClick={() => setTransition(value)}
+                  className={procedure === item ? 'selectable-list-item is-selected' : 'selectable-list-item'}
+                  onClick={() => {
+                    setProcedure(item);
+                    const nextTransition = filtered.find((option) => option.procedure === item)?.transition || 'None';
+                    setTransition(item === 'Direct' ? 'None' : nextTransition);
+                  }}
                 >
-                  {value}
+                  {item}
                 </List.Item>
-              );
-            }}
-          />
+              )}
+            />
+          </div>
+          <div>
+            <Text strong>Transition</Text>
+            <List
+              size="small"
+              dataSource={transitionOptions}
+              renderItem={(item) => {
+                const value = item.transition || 'None';
+                return (
+                  <List.Item
+                    className={transition === value ? 'selectable-list-item is-selected' : 'selectable-list-item'}
+                    onClick={() => setTransition(value)}
+                  >
+                    {value}
+                  </List.Item>
+                );
+              }}
+            />
+          </div>
         </div>
       </div>
-      <Button
-        block
-        type="primary"
-        onClick={() => onSelect(procedure === 'Direct' ? null : selectedItem)}
-      >
-        Select {mode === 'departure' ? 'Departure' : 'Arrival'} for {airportIcao(airport)}
-      </Button>
+      <div className="procedure-footer">
+        <div className="procedure-footer__summary">
+          <Text type="secondary" style={{fontSize: 12}}>{modeLabel} for {icao || '—'}</Text>
+          <Text strong ellipsis style={{maxWidth: '100%'}}>{summary}</Text>
+        </div>
+        <Button
+          block
+          type="primary"
+          icon={<CheckOutlined/>}
+          onClick={() => onSelect(isDirect ? null : selectedItem)}
+        >
+          Confirm {modeLabel}
+        </Button>
+      </div>
     </div>
   );
 }
